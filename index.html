@@ -3,28 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Los Angelitos — Librería & Juguetes · Ramos Mejía</title>
+<title>Los Angelitos — Librería & Juguetes</title>
 <meta name="description" content="Librería y juguetería en Ramos Mejía. Útiles escolares, Simball, Ezco, Mooving, juguetes a pila y fricción. Enviamos a todo el país.">
 <meta name="keywords" content="librería Ramos Mejía, juguetes Ramos Mejía, útiles escolares, Simball, Ezco, Mooving, librería online Buenos Aires">
 <meta name="author" content="Los Angelitos">
-<link rel="canonical" href="https://losangelitos25.github.io/neweed/">
-<!-- Favicon -->
-<link rel="icon" type="image/jpeg" href="logo.jpeg">
-<link rel="apple-touch-icon" href="logo.jpeg">
-<!-- Open Graph — previsualización en WhatsApp, Instagram, Facebook -->
 <meta property="og:title" content="Los Angelitos — Librería & Juguetes · Ramos Mejía">
 <meta property="og:description" content="Útiles escolares, juguetes y artículos de librería. Enviamos a todo el país.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://losangelitos25.github.io/neweed/">
-<meta property="og:image" content="https://losangelitos25.github.io/neweed/logo.jpeg">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:locale" content="es_AR">
-<!-- Twitter/X card -->
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Los Angelitos — Librería & Juguetes">
-<meta name="twitter:description" content="Útiles escolares, juguetes y artículos de librería en Ramos Mejía.">
-<meta name="twitter:image" content="https://losangelitos25.github.io/neweed/logo.jpeg">
+<meta property="og:url" content="https://losangelitos25.com.ar">
+<meta property="og:image" content="https://losangelitos25.com.ar/logo.jpg">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -811,7 +798,7 @@ footer a{color:var(--celeste);text-decoration:none}
           <span>Subtotal productos</span>
           <span id="modalSubtotalTransf" style="font-weight:700">$0</span>
         </div>
-        <div id="modalEnvioRow" style="display:none;display:none;justify-content:space-between;font-size:.85rem;color:var(--gray);margin-bottom:.4rem">
+        <div id="modalEnvioRow" style="display:none;justify-content:space-between;font-size:.85rem;color:var(--gray);margin-bottom:.4rem">
           <span id="modalEnvioLabel">Envío</span>
           <span id="modalEnvioCostoTransf" style="font-weight:700">$0</span>
         </div>
@@ -2331,6 +2318,15 @@ var ADMIN_PRODUCTOS = [
   {id:'vaso-900', nombre:'Vaso térmico 900ml', categoria:'Regalería', codigo:''},
   {id:'vaso-550', nombre:'Vaso térmico Premium 550ml', categoria:'Regalería', codigo:''},
 ];
+// ✅ FIX: restaurar códigos guardados desde localStorage al cargar la página
+(function(){
+  try {
+    var saved = JSON.parse(localStorage.getItem('admin_codigos') || '{}');
+    ADMIN_PRODUCTOS.forEach(function(p){
+      if(saved[p.id] !== undefined) p.codigo = saved[p.id];
+    });
+  } catch(e){}
+})();
 
 // Trigger oculto: 5 clicks en el copyright del footer
 function adminTrigger(){
@@ -2684,6 +2680,10 @@ function guardarTodoUnificado(){
   });
   guardarPrecios(guardados);
   guardarStock(stock);
+  // ✅ FIX: guardar códigos en localStorage para que persistan al recargar
+  var codGuardados = {};
+  ADMIN_PRODUCTOS.forEach(function(p){ codGuardados[p.id] = p.codigo || ''; });
+  localStorage.setItem('admin_codigos', JSON.stringify(codGuardados));
   var btn = document.getElementById('btnGuardarTodo');
   var orig = btn.innerHTML;
   btn.innerHTML = '✓ Guardado';
@@ -2691,6 +2691,8 @@ function guardarTodoUnificado(){
   setTimeout(function(){ btn.innerHTML = orig; btn.style.background = 'linear-gradient(135deg,#8B1A2A,#C0454F)'; }, 2200);
   // Refrescar vitrina cliente
   if(typeof cargarVitrinaAdmin === 'function') cargarVitrinaAdmin();
+  // ✅ Sincronizar con Google Sheets
+  guardarEnSheets();
 }
 
 function filtrarAdminProductos(){
@@ -2888,6 +2890,64 @@ function exportarStock(){
   a.click();
 }
 /* ── END STOCK ── */
+
+/* ── GOOGLE SHEETS SYNC ── */
+var SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzn-ea6Pyymvf0B3AoAa4eCggEQY2KtHJanlcxKEX6npl_3VsHw3eCACsE_tcPY-5Cy/exec';
+
+function cargarDesdeSheets(callback) {
+  fetch(SHEETS_URL)
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if(!res.ok) return;
+      var precios = {};
+      var stock = {};
+      var codigos = {};
+      res.data.forEach(function(row){
+        var id = row.id;
+        if(!id) return;
+        precios[id] = { precio: row.precio||'', costo: row.costo||'' };
+        stock[id]   = { cantidad: row.stock_cantidad||'', minimo: row.stock_minimo||'', nota: row.stock_nota||'' };
+        codigos[id] = row.codigo||'';
+        var p = ADMIN_PRODUCTOS.find(function(x){ return x.id===id; });
+        if(p) p.codigo = row.codigo||'';
+      });
+      localStorage.setItem('admin_precios', JSON.stringify(precios));
+      localStorage.setItem('admin_stock',   JSON.stringify(stock));
+      localStorage.setItem('admin_codigos', JSON.stringify(codigos));
+      if(typeof callback === 'function') callback();
+    })
+    .catch(function(err){
+      console.warn('Sheets — error al cargar:', err);
+      if(typeof callback === 'function') callback();
+    });
+}
+
+function guardarEnSheets() {
+  var precios = getPreciosGuardados();
+  var stock   = getStockGuardado();
+  var codigos = JSON.parse(localStorage.getItem('admin_codigos')||'{}');
+  var productos = ADMIN_PRODUCTOS.map(function(p){
+    var pr = precios[p.id] || {};
+    var sk = stock[p.id]   || {};
+    return {
+      id:             p.id,
+      codigo:         codigos[p.id]  || '',
+      precio:         pr.precio      || '',
+      costo:          pr.costo       || '',
+      stock_cantidad: sk.cantidad    || '',
+      stock_minimo:   sk.minimo      || '',
+      stock_nota:     sk.nota        || ''
+    };
+  });
+  fetch(SHEETS_URL, {
+    method: 'POST',
+    body: JSON.stringify({ productos: productos })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(res){ console.log('Sheets — guardado OK:', res.saved, 'filas'); })
+  .catch(function(err){ console.warn('Sheets — error al guardar:', err); });
+}
+/* ── FIN GOOGLE SHEETS SYNC ── */
 </script>
 
 <!-- ══════════════════════════════════════════
@@ -4482,13 +4542,14 @@ function loginAdmin(){
     err.style.display='none';
     document.getElementById('adminLogin').style.display='none';
     document.getElementById('adminWelcome').textContent='Hola, '+u;
-    cargarPreciosAdmin();
     document.getElementById('adminDashboard').style.display='flex';
     document.getElementById('adminDashboard').style.flexDirection='column';
     document.body.style.overflow='hidden';
     // pre-fill credentials form with current values
     var c = getAdminCreds() || getDefaultCreds();
     document.getElementById('newUser').value = c.user;
+    // Cargar desde Sheets al abrir el panel (igual que showSection 'precios')
+    cargarDesdeSheets(function(){ cargarPreciosAdmin(); });
   } else {
     err.textContent='Usuario o contraseña incorrectos.';
     err.style.display='block';
@@ -4534,7 +4595,7 @@ function showSection(name){
     var btn = document.getElementById('nav-'+s);
     if(btn){ btn.classList.toggle('active', s===name); }
   });
-  if(name==='precios'){ cargarPreciosAdmin(); }
+  if(name==='precios'){ cargarDesdeSheets(function(){ cargarPreciosAdmin(); }); }
   if(name==='historial') renderHistorial();
   if(name==='pedidos') renderPedidos();
   if(name==='pedidos') renderPedidosCancelados();
